@@ -56,7 +56,12 @@ try {
   const web = (await d.getContexts()).find((c) => String(c.id ?? c).startsWith("WEBVIEW"));
   if (web) await d.switchContext(String(web.id ?? web));
   await etat("accueil");
-  const ciel = await d.$("//button[normalize-space(.)='SKY' or normalize-space(.)='CIEL']");
+  await d.waitUntil(() => d.execute(() => {
+    const b = [...document.querySelectorAll("button")].find((x) => /^\s*(sky|ciel)/i.test(x.innerText));
+    if (b) b.id = "test-ciel";
+    return !!b;
+  }), { timeout: 30000 });
+  const ciel = await d.$("#test-ciel");
   await ciel.waitForExist({ timeout: 30000 });
   await ciel.click();
   await (await d.$("input.champ")).waitForExist({ timeout: 30000 });
