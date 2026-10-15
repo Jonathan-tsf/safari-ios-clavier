@@ -57,7 +57,7 @@ try {
   if (web) await d.switchContext(String(web.id ?? web));
   await etat("accueil");
   await d.waitUntil(() => d.execute(() => {
-    const b = [...document.querySelectorAll("button")].find((x) => /^\s*(sky|ciel)/i.test(x.innerText));
+    const b = [...document.querySelectorAll("button")].find((x) => /^\s*(sky|ciel)/i.test(x.innerText));
     if (b) b.id = "test-ciel";
     return !!b;
   }), { timeout: 30000 });
