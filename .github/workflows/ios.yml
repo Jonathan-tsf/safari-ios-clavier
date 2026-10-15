@@ -1,0 +1,37 @@
+name: iOS Safari keyboard test
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Page to test
+        default: https://wonderhop.io/en/
+jobs:
+  safari:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Simulators
+        run: |
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | grep -i iphone | head -20
+      - name: Appium
+        run: |
+          npm i -g appium@2
+          appium driver install xcuitest
+          npm i webdriverio@9
+          appium --log appium.log --relaxed-security &
+          sleep 8
+      - name: Test
+        env:
+          URL: ${{ inputs.url }}
+        run: node test.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results
+          path: |
+            out/
+            appium.log
