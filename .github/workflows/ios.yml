@@ -19,7 +19,7 @@ jobs:
           xcrun simctl list devices available | grep -i iphone | head -20
       - name: Appium
         run: |
-          npm i -g appium@2
+          npm i -g appium@3
           appium driver install xcuitest
           npm i webdriverio@9
           appium --log appium.log --relaxed-security &
