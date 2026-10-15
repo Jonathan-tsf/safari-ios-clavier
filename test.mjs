@@ -44,6 +44,15 @@ async function etat(nom) {
   console.log("ETAPE " + nom, JSON.stringify(s));
   log.push({ etape: nom, ...s });
 }
+async function toucheNatif(selecteur) {
+  const ctx = await d.getContext();
+  await d.switchContext("NATIVE_APP");
+  const e = await d.$(selecteur);
+  await e.waitForExist({ timeout: 120000 });
+  await e.click();
+  await d.switchContext(ctx);
+}
+const CHAMP = "-ios class chain:**/XCUIElementTypeWebView/**/XCUIElementTypeTextField";
 async function tapeNatif(texte) {
   const ctx = await d.getContext();
   await d.switchContext("NATIVE_APP");
@@ -57,23 +66,16 @@ try {
   const web = (await d.getContexts()).find((c) => String(c.id ?? c).startsWith("WEBVIEW"));
   if (web) await d.switchContext(String(web.id ?? web));
   await etat("accueil");
-  await d.waitUntil(() => d.execute(() => {
-    const b = [...document.querySelectorAll("button")].find((x) => /^\s*(sky|ciel)/i.test(x.innerText));
-    if (b) b.id = "test-ciel";
-    return !!b;
-  }), { timeout: 120000 });
-  const ciel = await d.$("#test-ciel");
-  await ciel.waitForExist({ timeout: 30000 });
-  await ciel.click();
+  await toucheNatif(`-ios predicate string:label BEGINSWITH[c] "sky"`);
   await (await d.$("input.champ")).waitForExist({ timeout: 30000 });
   await d.pause(2500);
   await etat("partie-debut");
   // the keyboard may not be open yet: tap the field like a person would
-  if (!(log.at(-1).clavierIOS === true)) { await (await d.$("input.champ")).click(); await d.pause(1500); await etat("champ-touche"); }
+  if (!(log.at(-1).clavierIOS === true)) { await toucheNatif(CHAMP); await d.pause(1500); await etat("champ-touche"); }
   await tapeNatif("!!!\n"); // rejected locally ("Type an answer."), no server call
   await d.pause(1500);
   await etat("apres-refus");
-  await (await d.$("input.champ")).click();
+  await toucheNatif(CHAMP);
   await d.pause(2000);
   await etat("champ-retouche");
   await tapeNatif("x");
