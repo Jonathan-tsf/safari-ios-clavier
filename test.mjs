@@ -7,12 +7,12 @@ mkdirSync("out", { recursive: true });
 const URL = process.env.URL || "https://wonderhop.io/en/";
 const devs = JSON.parse(execSync("xcrun simctl list devices available -j").toString()).devices;
 const runtime = Object.keys(devs).filter((k) => k.includes("iOS")).sort().pop();
-const iphone = devs[runtime].find((d) => /^iPhone 1[6-7]( |$)/.test(d.name)) || devs[runtime].find((d) => d.name.startsWith("iPhone"));
+const iphone = devs[runtime].find((d) => d.udid === process.env.UDID) || devs[runtime].find((d) => /^iPhone 1[6-7]( |$)/.test(d.name)) || devs[runtime].find((d) => d.name.startsWith("iPhone"));
 const version = runtime.split("iOS-")[1].replace(/-/g, ".");
 console.log("device", iphone.name, version);
 
 const d = await remote({
-  hostname: "127.0.0.1", port: 4723, logLevel: "warn",
+  hostname: "127.0.0.1", port: 4723, logLevel: "warn", connectionRetryTimeout: 1200000, connectionRetryCount: 0,
   capabilities: {
     platformName: "iOS", browserName: "Safari",
     "appium:automationName": "XCUITest", "appium:deviceName": iphone.name, "appium:platformVersion": version,
