@@ -22,7 +22,7 @@ jobs:
           npm i -g appium@3
           appium driver install xcuitest
           npm i webdriverio@9
-          UDID=$(xcrun simctl list devices available | grep -E "^ +iPhone 17 \(" | head -1 | grep -oE "[0-9A-F-]{36}")
+          UDID=$(node -e 'const d=JSON.parse(require("child_process").execSync("xcrun simctl list devices available -j")).devices;const r=Object.keys(d).filter(k=>k.includes("iOS")).sort().pop();const i=d[r].find(x=>/^iPhone 1[6-7]( |$)/.test(x.name))||d[r].find(x=>x.name.startsWith("iPhone"));console.log(i.udid)')
           echo "UDID=$UDID" >> $GITHUB_ENV
           xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID"
           appium driver run xcuitest build-wda || true
