@@ -24,6 +24,7 @@ jobs:
           npm i webdriverio@9
           UDID=$(node -e 'const d=JSON.parse(require("child_process").execSync("xcrun simctl list devices available -j")).devices;const r=Object.keys(d).filter(k=>k.includes("iOS")).sort().pop();const i=d[r].find(x=>/^iPhone 1[6-7]( |$)/.test(x.name))||d[r].find(x=>x.name.startsWith("iPhone"));console.log(i.udid)')
           echo "UDID=$UDID" >> $GITHUB_ENV
+          defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
           xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID"
           appium driver run xcuitest build-wda || true
           appium --log appium.log --relaxed-security &

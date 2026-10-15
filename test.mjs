@@ -41,13 +41,14 @@ async function etat(nom) {
   await d.switchContext(ctx);
   const f = `out/${String(++n).padStart(2, "0")}-${nom}.png`;
   await d.saveScreenshot(f);
-  console.log(nom, JSON.stringify(s));
+  console.log("ETAPE " + nom, JSON.stringify(s));
   log.push({ etape: nom, ...s });
 }
 async function tapeNatif(texte) {
   const ctx = await d.getContext();
   await d.switchContext("NATIVE_APP");
-  await d.execute("mobile: keys", { keys: [...texte] });
+  const f = await d.$("-ios class chain:**/XCUIElementTypeWebView/**/XCUIElementTypeTextField");
+  await f.addValue(texte);
   await d.switchContext(ctx);
 }
 try {
