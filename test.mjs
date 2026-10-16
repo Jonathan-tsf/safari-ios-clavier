@@ -81,14 +81,17 @@ try {
   await pageChargee();
   await pause(2000);
 
-  // where the page sits on the screen (points), once, before the round starts
-  const vue = await natif(async () => { const w = await d.$("-ios class chain:**/XCUIElementTypeWebView"); const p = await w.getLocation(); const t = await w.getSize(); return { x: p.x, y: p.y, l: t.width, h: t.height }; });
-  console.log("webview", JSON.stringify(vue));
+  console.log("bundle", await d.execute(() => [...document.scripts].map((s) => s.src).find((s) => s.includes("/assets/index-")) || "?"));
+  // where the page sits on the screen (points), once, before the round starts: the SKY button seen natively vs in the page
+  const centrePage = (s) => d.execute((s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, s);
+  const skyPage = await centrePage(".mode-bouton");
+  const skyNatif = await natif(async () => { const e = await d.$(`-ios predicate string:label BEGINSWITH[c] "sky"`); await e.waitForExist({ timeout: 60000 }); const p = await e.getLocation(); const t = await e.getSize(); return { x: p.x + t.width / 2, y: p.y + t.height / 2 }; });
+  const dx = skyNatif.x - skyPage.x, dy = skyNatif.y - skyPage.y;
+  console.log("décalage page → écran", JSON.stringify({ skyPage, skyNatif, dx, dy }));
   const toucher = async (sel) => {
-    const r = await d.execute((s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, l: innerWidth }; }, sel);
+    const r = await centrePage(sel);
     if (!r) return false;
-    const k = vue.l / r.l;
-    await d.execute("mobile: tap", { x: vue.x + r.x * k, y: vue.y + r.y * k });
+    await d.execute("mobile: tap", { x: r.x + dx, y: r.y + dy });
     return true;
   };
   await etat("accueil");
