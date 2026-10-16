@@ -114,12 +114,38 @@ try {
   await pause(2200);                                               // opening of the question (1.6 s)
   await etat("q1-avant-appui", true);
   await fermerAstuces();
+  // Appium can block for ~30 s once the keyboard opens: the page records itself every 100 ms,
+  // and the simulator takes screenshots on its own (no Appium involved)
+  await d.execute(() => {
+    window.__j = []; const t0 = performance.now();
+    const note = (ev) => {
+      const vv = visualViewport, q = document.querySelector(".partie-question"), c = document.querySelector("input.champ");
+      const qr = q && q.getBoundingClientRect(), cr = c && c.getBoundingClientRect(), cs = getComputedStyle(document.documentElement);
+      window.__j.push([Math.round(performance.now() - t0), ev, Math.round(vv.height), Math.round(vv.offsetTop), scrollY,
+        cs.getPropertyValue("--clavier"), cs.getPropertyValue("--vv-haut") || "-", qr ? Math.round(qr.top) : null, qr ? Math.round(qr.bottom) : null,
+        cr ? Math.round(cr.top) : null, cr ? Math.round(cr.bottom) : null, document.activeElement && document.activeElement.tagName]);
+    };
+    window.__ji = setInterval(() => note("."), 100);
+    visualViewport.addEventListener("resize", () => note("vv-resize")); visualViewport.addEventListener("scroll", () => note("vv-scroll"));
+    document.addEventListener("focusin", () => note("focusin"));
+  });
+  const captures = spawn("bash", ["-c", `for i in $(seq -w 1 14); do xcrun simctl io ${iphone.udid} screenshot out/apres-appui-$i.png >/dev/null 2>&1; sleep 0.6; done`]);
   console.log("appui sur le champ", t());
   await toucher("input.champ");                                    // a person taps the answer field
-  await pause(1500);
-  await etat("q1-champ-touche");
-  await pause(2000);
-  await etat("q1-2s-plus-tard");
+  console.log("appui fait", t());
+  await new Promise((r) => captures.on("exit", r));
+  await pause(500);
+  const j = await d.execute(() => { clearInterval(window.__ji); return window.__j; }).catch((e) => { console.log("journal illisible", e.message); return []; });
+  writeFileSync("out/journal.json", JSON.stringify(j));
+  let avant = "";
+  for (const [ms, ev, h, top, sy, cl, vh, qh, qb, ch, cb, f] of j) {
+    const l = `vvH ${h} vvTop ${top} scrollY ${sy} --clavier ${cl} --vv-haut ${vh} question ${qh}→${qb} champ ${ch}→${cb} focus ${f}`;
+    const cachee = qh !== null && (qb <= top || qh < top - 1) ? "  <-- QUESTION CACHÉE" : "";
+    const sous = ch !== null && h < 650 && cb > top + h + 1 ? "  <-- CHAMP SOUS LE CLAVIER" : "";
+    if (l !== avant || ev !== ".") console.log(`JOURNAL ${String(ms).padStart(5)} ms ${ev.padEnd(9)} ${l}${cachee}${sous}`);
+    avant = l;
+  }
+  await etat("fin");
 } catch (e) {
   console.error(e);
   await d.saveScreenshot("out/erreur.png").catch(() => {});
