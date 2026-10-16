@@ -31,7 +31,9 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$UDID:ConnectHardwareKeyboard bool false" ~/Library/Preferences/com.apple.iphonesimulator.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Set :DevicePreferences:$UDID:ConnectHardwareKeyboard false" ~/Library/Preferences/com.apple.iphonesimulator.plist
           defaults read com.apple.iphonesimulator | head -40
-          xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+          # Appium boots the simulator itself: "connectHardwareKeyboard: false" only applies when Appium launches it
+          # (when the workflow booted it, the software keyboard never showed).
+          xcrun simctl shutdown all || true
           appium driver run xcuitest build-wda || true
           nohup appium --log appium.log --relaxed-security > appium.out 2>&1 &
           for i in $(seq 1 60); do curl -s http://127.0.0.1:4723/status >/dev/null && echo "appium ready" && break; sleep 2; done

@@ -56,8 +56,14 @@ try {
   await d.pause(6000);
   const web = (await d.getContexts()).find((c) => String(c.id ?? c).startsWith("WEBVIEW"));
   if (web) await d.switchContext(String(web.id ?? web));
+  // wait for the real page (an about:blank document refuses localStorage: "The operation is insecure")
+  for (let i = 0; i < 30; i++) {
+    const ok = await d.execute(() => location.protocol.startsWith("http") && document.readyState === "complete").catch(() => false);
+    if (ok) break;
+    await d.pause(1000);
+  }
   // test device: measurement off (same flag as Jonathan's own devices), then reload
-  await d.execute(() => localStorage.setItem("wonderhop.moi", "1"));
+  await d.execute(() => localStorage.setItem("wonderhop.moi", "1")).catch((e) => console.log("flag moi non posé", e.message));
   await d.url(URL);
   await d.pause(6000);
   await etat("accueil");
@@ -71,7 +77,10 @@ try {
   let s = await etat("q1-champ-touche");
   if (s.clavierIOS !== true) {
     // second try: tap at the field's screen position
-    await natif(async () => { const f = await d.$(CHAMP); const r = await f.getRect(); await d.execute("mobile: tap", { x: r.x + r.width / 2, y: r.y + r.height / 2 }); });
+    await natif(async () => {
+      const f = await d.$(CHAMP); const p = await f.getLocation(), t = await f.getSize();
+      await d.execute("mobile: tap", { x: p.x + t.width / 2, y: p.y + t.height / 2 });
+    });
     await d.pause(2500);
     s = await etat("q1-champ-touche-2");
   }
