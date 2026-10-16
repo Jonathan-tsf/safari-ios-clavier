@@ -1,5 +1,7 @@
 // Real Mobile Safari (iOS simulator): at the first question of a round, after tapping the answer field,
 // is the question still on screen, and is the field above the keyboard?
+// Taps are real touches at screen coordinates (mobile: tap), computed before the round starts,
+// so the 30-second question timer is not eaten by slow element lookups.
 import { remote } from "webdriverio";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { execSync, spawn } from "node:child_process";
@@ -10,9 +12,9 @@ const devs = JSON.parse(execSync("xcrun simctl list devices available -j").toStr
 const runtime = Object.keys(devs).filter((k) => k.includes("iOS")).sort().pop();
 const iphone = devs[runtime].find((d) => d.udid === process.env.UDID) || devs[runtime].find((d) => /^iPhone 1[6-7]( |$)/.test(d.name)) || devs[runtime].find((d) => d.name.startsWith("iPhone"));
 const version = runtime.split("iOS-")[1].replace(/-/g, ".");
-console.log("device", iphone.name, version);
+console.log("device", iphone.name, version, "url", URL);
 
-const d = await remote({
+const opts = {
   hostname: "127.0.0.1", port: 4723, logLevel: "warn", connectionRetryTimeout: 1200000, connectionRetryCount: 0,
   capabilities: {
     platformName: "iOS", browserName: "Safari",
@@ -22,7 +24,11 @@ const d = await remote({
     // cold simulator booted by Appium: Safari takes a while to show up in the remote debugger
     "appium:webviewConnectTimeout": 180000, "appium:webkitResponseTimeout": 60000,
   },
-});
+};
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+let d;
+try { d = await remote(opts); } catch (e) { console.log("session: second try after", e.message); await pause(30000); d = await remote(opts); }
+
 const video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "-f", "out/run.mp4"]);
 const log = [];
 let n = 0;
@@ -31,69 +37,74 @@ async function natif(f) {
   await d.switchContext("NATIVE_APP");
   try { return await f(); } finally { await d.switchContext(ctx); }
 }
-async function etat(nom) {
-  const s = await d.execute(() => {
-    const vv = window.visualViewport, c = document.querySelector("input.champ"), q = document.querySelector(".partie-question");
-    const r = c?.getBoundingClientRect(), qr = q?.getBoundingClientRect();
-    return {
-      innerHeight, vvH: vv?.height, vvTop: vv?.offsetTop, scrollY,
-      clavierCss: getComputedStyle(document.documentElement).getPropertyValue("--clavier"),
-      vvHautCss: getComputedStyle(document.documentElement).getPropertyValue("--vv-haut"),
-      actif: document.activeElement?.tagName + "." + (document.activeElement?.className || ""),
-      champHaut: r?.top, champBas: r?.bottom, valeur: c?.value,
-      questionHaut: qr?.top, questionBas: qr?.bottom, question: q?.textContent,
-      champVisible: r && vv ? r.top >= vv.offsetTop - 1 && r.bottom <= vv.offsetTop + vv.height + 1 : null,
-      questionVisible: qr && vv ? qr.top >= vv.offsetTop - 1 && qr.bottom <= vv.offsetTop + vv.height + 1 : null,
-    };
-  });
-  s.clavierIOS = await natif(() => d.isKeyboardShown()).catch(() => "?");
-  await d.saveScreenshot(`out/${String(++n).padStart(2, "0")}-${nom}.png`);
+const MESURE = () => {
+  const vv = window.visualViewport, c = document.querySelector("input.champ"), q = document.querySelector(".partie-question");
+  const r = c?.getBoundingClientRect(), qr = q?.getBoundingClientRect();
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    innerHeight, vvH: vv?.height, vvTop: vv?.offsetTop, scrollY,
+    clavierCss: cs.getPropertyValue("--clavier"), vvHautCss: cs.getPropertyValue("--vv-haut"),
+    actif: document.activeElement?.tagName + "." + (document.activeElement?.className || ""),
+    champHaut: r?.top, champBas: r?.bottom, valeur: c?.value,
+    questionHaut: qr?.top, questionBas: qr?.bottom, question: q?.textContent,
+    champVisible: r && vv ? r.top >= vv.offsetTop - 1 && r.bottom <= vv.offsetTop + vv.height + 1 : null,
+    questionVisible: qr && vv ? qr.top >= vv.offsetTop - 1 && qr.bottom <= vv.offsetTop + vv.height + 1 : null,
+  };
+};
+/** Full state: page measurements, iOS keyboard, screenshot. `vite`: page measurements only (no slow calls). */
+async function etat(nom, vite = false) {
+  const s = await d.execute(MESURE);
+  if (!vite) {
+    s.clavierIOS = await natif(() => d.isKeyboardShown()).catch(() => "?");
+    await d.saveScreenshot(`out/${String(++n).padStart(2, "0")}-${nom}.png`);
+  }
   console.log("ETAPE " + nom, JSON.stringify(s));
   log.push({ etape: nom, ...s });
   return s;
 }
-const CHAMP = "-ios class chain:**/XCUIElementTypeWebView/**/XCUIElementTypeTextField";
 try {
   await d.url(URL);
-  await d.pause(6000);
   const web = (await d.getContexts()).find((c) => String(c.id ?? c).startsWith("WEBVIEW"));
   if (web) await d.switchContext(String(web.id ?? web));
-  // wait for the real page (an about:blank document refuses localStorage: "The operation is insecure")
-  for (let i = 0; i < 30; i++) {
-    const ok = await d.execute(() => location.protocol.startsWith("http") && document.readyState === "complete").catch(() => false);
-    if (ok) break;
-    await d.pause(1000);
-  }
+  const pageChargee = async () => {
+    for (let i = 0; i < 40; i++) {
+      const ok = await d.execute(() => location.protocol.startsWith("http") && document.readyState === "complete" && !!document.querySelector(".mode-bouton")).catch(() => false);
+      if (ok) return true;
+      await pause(1000);
+    }
+    return false;
+  };
+  await pageChargee();
   // test device: measurement off (same flag as Jonathan's own devices), then reload
   await d.execute(() => localStorage.setItem("wonderhop.moi", "1")).catch((e) => console.log("flag moi non posé", e.message));
   await d.url(URL);
-  await d.pause(6000);
+  await pageChargee();
+  await pause(2000);
+
+  // where the page sits on the screen (points), once, before the round starts
+  const vue = await natif(async () => { const w = await d.$("-ios class chain:**/XCUIElementTypeWebView"); const p = await w.getLocation(); const t = await w.getSize(); return { x: p.x, y: p.y, l: t.width, h: t.height }; });
+  console.log("webview", JSON.stringify(vue));
+  const toucher = async (sel) => {
+    const r = await d.execute((s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, l: innerWidth }; }, sel);
+    if (!r) return false;
+    const k = vue.l / r.l;
+    await d.execute("mobile: tap", { x: vue.x + r.x * k, y: vue.y + r.y * k });
+    return true;
+  };
   await etat("accueil");
-  // SKY: a native tap; iOS sometimes takes the first tap as hover only, so a second tap, then a plain click as a last resort
+
   const partieLancee = async (ms) => (await d.$("input.champ")).waitForExist({ timeout: ms }).then(() => true, () => false);
-  const toucheSky = () => natif(async () => { const e = await d.$(`-ios predicate string:label BEGINSWITH[c] "sky"`); await e.waitForExist({ timeout: 120000 }); await e.click(); });
-  await toucheSky();
-  if (!(await partieLancee(8000))) { console.log("SKY : second appui"); await toucheSky(); }
-  if (!(await partieLancee(8000))) { console.log("SKY : clic de secours"); await d.execute(() => document.querySelector(".mode-bouton")?.click()); }
-  await (await d.$("input.champ")).waitForExist({ timeout: 30000 });
-  await d.pause(3000);
-  await etat("q1-debut");
-  // a person taps the answer field
-  await natif(async () => { const f = await d.$(CHAMP); await f.waitForExist({ timeout: 30000 }); await f.click(); });
-  await d.pause(2500);
-  let s = await etat("q1-champ-touche");
-  if (s.clavierIOS !== true) {
-    // second try: tap at the field's screen position
-    await natif(async () => {
-      const f = await d.$(CHAMP); const p = await f.getLocation(), t = await f.getSize();
-      await d.execute("mobile: tap", { x: p.x + t.width / 2, y: p.y + t.height / 2 });
-    });
-    await d.pause(2500);
-    s = await etat("q1-champ-touche-2");
-  }
-  await natif(async () => { const f = await d.$(CHAMP); await f.addValue("cat"); });
-  await d.pause(1500);
-  await etat("q1-apres-frappe");
+  await toucher(".mode-bouton");                                   // SKY
+  if (!(await partieLancee(6000))) { console.log("SKY : second appui"); await toucher(".mode-bouton"); }
+  if (!(await partieLancee(6000))) { console.log("SKY : clic de secours"); await d.execute(() => document.querySelector(".mode-bouton")?.click()); }
+  await (await d.$("input.champ")).waitForExist({ timeout: 20000 });
+  await pause(2200);                                               // opening of the question (1.6 s)
+  await etat("q1-avant-appui", true);
+  await toucher("input.champ");                                    // a person taps the answer field
+  await pause(1500);
+  await etat("q1-champ-touche");
+  await pause(2000);
+  await etat("q1-2s-plus-tard");
 } catch (e) {
   console.error(e);
   await d.saveScreenshot("out/erreur.png").catch(() => {});
@@ -101,6 +112,6 @@ try {
 } finally {
   writeFileSync("out/etats.json", JSON.stringify(log, null, 1));
   video.kill("SIGINT");
-  await new Promise((r) => setTimeout(r, 3000));
+  await pause(3000);
   await d.deleteSession().catch(() => {});
 }
