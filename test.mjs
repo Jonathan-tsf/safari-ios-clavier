@@ -102,20 +102,8 @@ try {
     for (const x of b) { await x.click().catch(() => {}); console.log("astuce Safari fermée"); }
   }).catch(() => {});
   await fermerAstuces();
-  const t0 = Date.now(), t = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
-  const champLa = () => d.execute(() => !!document.querySelector("input.champ")).catch(() => false);
-  const partieLancee = async (ms) => { const fin = Date.now() + ms; while (Date.now() < fin) { if (await champLa()) return true; await pause(300); } return false; };
-  await toucher(".mode-bouton");                                   // SKY
-  console.log("SKY touché", t());
-  if (!(await partieLancee(10000))) { console.log("SKY : second appui", t()); await toucher(".mode-bouton"); }
-  if (!(await partieLancee(10000))) { console.log("SKY : clic de secours", t()); await d.execute(() => document.querySelector(".mode-bouton")?.click()); }
-  if (!(await partieLancee(10000))) throw new Error("la manche ne démarre pas");
-  console.log("question 1 à l'écran", t());
-  await pause(2200);                                               // opening of the question (1.6 s)
-  await etat("q1-avant-appui", true);
-  await fermerAstuces();
-  // Appium can block for ~30 s once the keyboard opens: the page records itself every 100 ms,
-  // and the simulator takes screenshots on its own (no Appium involved)
+  // Appium can block for ~30 s at any page read once the keyboard opens: the page records itself every 100 ms
+  // from the home screen on, and nothing reads the page between the SKY tap and the field tap.
   await d.execute(() => {
     window.__j = []; const t0 = performance.now();
     const note = (ev) => {
@@ -128,13 +116,18 @@ try {
     window.__ji = setInterval(() => note("."), 100);
     visualViewport.addEventListener("resize", () => note("vv-resize")); visualViewport.addEventListener("scroll", () => note("vv-scroll"));
     document.addEventListener("focusin", () => note("focusin"));
+    document.addEventListener("touchstart", () => note("TOUCHER"), { capture: true, passive: true });
   });
-  const captures = spawn("bash", ["-c", `for i in $(seq -w 1 14); do xcrun simctl io ${iphone.udid} screenshot out/apres-appui-$i.png >/dev/null 2>&1; sleep 0.6; done`]);
-  console.log("appui sur le champ", t());
-  await toucher("input.champ");                                    // a person taps the answer field
+  const t0 = Date.now(), t = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
+  await toucher(".mode-bouton");                                   // SKY
+  console.log("SKY touché", t());
+  await pause(5500);                                               // round starts, question opening (1.6 s)
+  // the answer field, where it sits at question 1 (measured on earlier runs: mock pages have one more help line)
+  const champ = { x: 140, y: URL.includes("mock") ? 606 : 656 };
+  console.log("appui sur le champ", JSON.stringify(champ), t());
+  await d.execute("mobile: tap", { x: champ.x + dx, y: champ.y + dy });
   console.log("appui fait", t());
-  await new Promise((r) => captures.on("exit", r));
-  await pause(500);
+  await pause(6000);
   const j = await d.execute(() => { clearInterval(window.__ji); return window.__j; }).catch((e) => { console.log("journal illisible", e.message); return []; });
   writeFileSync("out/journal.json", JSON.stringify(j));
   let avant = "";
