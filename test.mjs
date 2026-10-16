@@ -1,4 +1,5 @@
-// Real Mobile Safari (iOS simulator): does the on-screen keyboard cover the answer field after a rejected answer?
+// Real Mobile Safari (iOS simulator): at the first question of a round, after tapping the answer field,
+// is the question still on screen, and is the field above the keyboard?
 import { remote } from "webdriverio";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { execSync, spawn } from "node:child_process";
@@ -23,64 +24,60 @@ const d = await remote({
 const video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "-f", "out/run.mp4"]);
 const log = [];
 let n = 0;
-async function etat(nom) {
+async function natif(f) {
   const ctx = await d.getContext();
+  await d.switchContext("NATIVE_APP");
+  try { return await f(); } finally { await d.switchContext(ctx); }
+}
+async function etat(nom) {
   const s = await d.execute(() => {
-    const vv = window.visualViewport, c = document.querySelector("input.champ");
-    const r = c?.getBoundingClientRect();
+    const vv = window.visualViewport, c = document.querySelector("input.champ"), q = document.querySelector(".partie-question");
+    const r = c?.getBoundingClientRect(), qr = q?.getBoundingClientRect();
     return {
       innerHeight, vvH: vv?.height, vvTop: vv?.offsetTop, scrollY,
       clavierCss: getComputedStyle(document.documentElement).getPropertyValue("--clavier"),
+      vvHautCss: getComputedStyle(document.documentElement).getPropertyValue("--vv-haut"),
       actif: document.activeElement?.tagName + "." + (document.activeElement?.className || ""),
-      champHaut: r?.top, champBas: r?.bottom, valeur: c?.value, erreur: document.querySelector("#erreur-saisie")?.textContent,
+      champHaut: r?.top, champBas: r?.bottom, valeur: c?.value,
+      questionHaut: qr?.top, questionBas: qr?.bottom, question: q?.textContent,
       champVisible: r && vv ? r.top >= vv.offsetTop - 1 && r.bottom <= vv.offsetTop + vv.height + 1 : null,
+      questionVisible: qr && vv ? qr.top >= vv.offsetTop - 1 && qr.bottom <= vv.offsetTop + vv.height + 1 : null,
     };
   });
-  await d.switchContext("NATIVE_APP");
-  s.clavierIOS = await d.isKeyboardShown().catch(() => "?");
-  await d.switchContext(ctx);
-  const f = `out/${String(++n).padStart(2, "0")}-${nom}.png`;
-  await d.saveScreenshot(f);
+  s.clavierIOS = await natif(() => d.isKeyboardShown()).catch(() => "?");
+  await d.saveScreenshot(`out/${String(++n).padStart(2, "0")}-${nom}.png`);
   console.log("ETAPE " + nom, JSON.stringify(s));
   log.push({ etape: nom, ...s });
-}
-async function toucheNatif(selecteur) {
-  const ctx = await d.getContext();
-  await d.switchContext("NATIVE_APP");
-  const e = await d.$(selecteur);
-  await e.waitForExist({ timeout: 120000 });
-  await e.click();
-  await d.switchContext(ctx);
+  return s;
 }
 const CHAMP = "-ios class chain:**/XCUIElementTypeWebView/**/XCUIElementTypeTextField";
-async function tapeNatif(texte) {
-  const ctx = await d.getContext();
-  await d.switchContext("NATIVE_APP");
-  const f = await d.$("-ios class chain:**/XCUIElementTypeWebView/**/XCUIElementTypeTextField");
-  await f.addValue(texte);
-  await d.switchContext(ctx);
-}
 try {
   await d.url(URL);
   await d.pause(6000);
   const web = (await d.getContexts()).find((c) => String(c.id ?? c).startsWith("WEBVIEW"));
   if (web) await d.switchContext(String(web.id ?? web));
+  // test device: measurement off (same flag as Jonathan's own devices), then reload
+  await d.execute(() => localStorage.setItem("wonderhop.moi", "1"));
+  await d.url(URL);
+  await d.pause(6000);
   await etat("accueil");
-  await toucheNatif(`-ios predicate string:label BEGINSWITH[c] "sky"`);
+  await natif(async () => { const e = await d.$(`-ios predicate string:label BEGINSWITH[c] "sky"`); await e.waitForExist({ timeout: 120000 }); await e.click(); });
   await (await d.$("input.champ")).waitForExist({ timeout: 30000 });
+  await d.pause(3000);
+  await etat("q1-debut");
+  // a person taps the answer field
+  await natif(async () => { const f = await d.$(CHAMP); await f.waitForExist({ timeout: 30000 }); await f.click(); });
   await d.pause(2500);
-  await etat("partie-debut");
-  // the keyboard may not be open yet: tap the field like a person would
-  if (!(log.at(-1).clavierIOS === true)) { await toucheNatif(CHAMP); await d.pause(1500); await etat("champ-touche"); }
-  await tapeNatif("!!!\n"); // rejected locally ("Type an answer."), no server call
+  let s = await etat("q1-champ-touche");
+  if (s.clavierIOS !== true) {
+    // second try: tap at the field's screen position
+    await natif(async () => { const f = await d.$(CHAMP); const r = await f.getRect(); await d.execute("mobile: tap", { x: r.x + r.width / 2, y: r.y + r.height / 2 }); });
+    await d.pause(2500);
+    s = await etat("q1-champ-touche-2");
+  }
+  await natif(async () => { const f = await d.$(CHAMP); await f.addValue("cat"); });
   await d.pause(1500);
-  await etat("apres-refus");
-  await toucheNatif(CHAMP);
-  await d.pause(2000);
-  await etat("champ-retouche");
-  await tapeNatif("x");
-  await d.pause(800);
-  await etat("apres-frappe");
+  await etat("q1-apres-frappe");
 } catch (e) {
   console.error(e);
   await d.saveScreenshot("out/erreur.png").catch(() => {});

@@ -24,8 +24,17 @@ jobs:
           npm i webdriverio@9
           UDID=$(node -e 'const d=JSON.parse(require("child_process").execSync("xcrun simctl list devices available -j")).devices;const r=Object.keys(d).filter(k=>k.includes("iOS")).sort().pop();const i=d[r].find(x=>/^iPhone 1[6-7]( |$)/.test(x.name))||d[r].find(x=>x.name.startsWith("iPhone"));console.log(i.udid)')
           echo "UDID=$UDID" >> $GITHUB_ENV
+          # software keyboard: hardware keyboard disconnected globally AND for this device, before boot
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool false
+          /usr/libexec/PlistBuddy -c "Add :DevicePreferences dict" ~/Library/Preferences/com.apple.iphonesimulator.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$UDID dict" ~/Library/Preferences/com.apple.iphonesimulator.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$UDID:ConnectHardwareKeyboard bool false" ~/Library/Preferences/com.apple.iphonesimulator.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Set :DevicePreferences:$UDID:ConnectHardwareKeyboard false" ~/Library/Preferences/com.apple.iphonesimulator.plist
+          killall cfprefsd 2>/dev/null || true
+          defaults read com.apple.iphonesimulator | head -40
           xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID"
+          open -a Simulator --args -CurrentDeviceUDID "$UDID" || true
+          sleep 5
           appium driver run xcuitest build-wda || true
           appium --log appium.log --relaxed-security &
           sleep 8
