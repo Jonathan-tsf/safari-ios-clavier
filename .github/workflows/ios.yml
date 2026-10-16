@@ -30,14 +30,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$UDID dict" ~/Library/Preferences/com.apple.iphonesimulator.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :DevicePreferences:$UDID:ConnectHardwareKeyboard bool false" ~/Library/Preferences/com.apple.iphonesimulator.plist 2>/dev/null \
             || /usr/libexec/PlistBuddy -c "Set :DevicePreferences:$UDID:ConnectHardwareKeyboard false" ~/Library/Preferences/com.apple.iphonesimulator.plist
-          killall cfprefsd 2>/dev/null || true
           defaults read com.apple.iphonesimulator | head -40
-          xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID"
-          open -a Simulator --args -CurrentDeviceUDID "$UDID" || true
-          sleep 5
+          xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
           appium driver run xcuitest build-wda || true
-          appium --log appium.log --relaxed-security &
-          sleep 8
+          nohup appium --log appium.log --relaxed-security > appium.out 2>&1 &
+          for i in $(seq 1 60); do curl -s http://127.0.0.1:4723/status >/dev/null && echo "appium ready" && break; sleep 2; done
       - name: Test
         env:
           URL: ${{ inputs.url }}
