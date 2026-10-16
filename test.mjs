@@ -69,7 +69,12 @@ try {
   await d.url(URL);
   await d.pause(6000);
   await etat("accueil");
-  await natif(async () => { const e = await d.$(`-ios predicate string:label BEGINSWITH[c] "sky"`); await e.waitForExist({ timeout: 120000 }); await e.click(); });
+  // SKY: a native tap; iOS sometimes takes the first tap as hover only, so a second tap, then a plain click as a last resort
+  const partieLancee = async (ms) => (await d.$("input.champ")).waitForExist({ timeout: ms }).then(() => true, () => false);
+  const toucheSky = () => natif(async () => { const e = await d.$(`-ios predicate string:label BEGINSWITH[c] "sky"`); await e.waitForExist({ timeout: 120000 }); await e.click(); });
+  await toucheSky();
+  if (!(await partieLancee(8000))) { console.log("SKY : second appui"); await toucheSky(); }
+  if (!(await partieLancee(8000))) { console.log("SKY : clic de secours"); await d.execute(() => document.querySelector(".mode-bouton")?.click()); }
   await (await d.$("input.champ")).waitForExist({ timeout: 30000 });
   await d.pause(3000);
   await etat("q1-debut");
