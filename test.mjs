@@ -58,7 +58,7 @@ async function etat(nom, vite = false) {
     s.clavierIOS = await natif(() => d.isKeyboardShown()).catch(() => "?");
     await d.saveScreenshot(`out/${String(++n).padStart(2, "0")}-${nom}.png`);
   }
-  console.log("ETAPE " + nom, JSON.stringify(s));
+  console.log("ETAPE " + nom, new Date().toISOString().slice(11, 19), JSON.stringify(s));
   log.push({ etape: nom, ...s });
   return s;
 }
@@ -96,13 +96,25 @@ try {
   };
   await etat("accueil");
 
-  const partieLancee = async (ms) => (await d.$("input.champ")).waitForExist({ timeout: ms }).then(() => true, () => false);
+  // Safari tip bubbles ("View Bookmarks, Share Menu…") cover the bottom of the page: close them
+  const fermerAstuces = () => natif(async () => {
+    const b = await d.$$(`-ios predicate string:type == "XCUIElementTypeButton" AND (label ==[c] "Close" OR name ==[c] "Close")`);
+    for (const x of b) { await x.click().catch(() => {}); console.log("astuce Safari fermée"); }
+  }).catch(() => {});
+  await fermerAstuces();
+  const t0 = Date.now(), t = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
+  const champLa = () => d.execute(() => !!document.querySelector("input.champ")).catch(() => false);
+  const partieLancee = async (ms) => { const fin = Date.now() + ms; while (Date.now() < fin) { if (await champLa()) return true; await pause(300); } return false; };
   await toucher(".mode-bouton");                                   // SKY
-  if (!(await partieLancee(6000))) { console.log("SKY : second appui"); await toucher(".mode-bouton"); }
-  if (!(await partieLancee(6000))) { console.log("SKY : clic de secours"); await d.execute(() => document.querySelector(".mode-bouton")?.click()); }
-  await (await d.$("input.champ")).waitForExist({ timeout: 20000 });
+  console.log("SKY touché", t());
+  if (!(await partieLancee(10000))) { console.log("SKY : second appui", t()); await toucher(".mode-bouton"); }
+  if (!(await partieLancee(10000))) { console.log("SKY : clic de secours", t()); await d.execute(() => document.querySelector(".mode-bouton")?.click()); }
+  if (!(await partieLancee(10000))) throw new Error("la manche ne démarre pas");
+  console.log("question 1 à l'écran", t());
   await pause(2200);                                               // opening of the question (1.6 s)
   await etat("q1-avant-appui", true);
+  await fermerAstuces();
+  console.log("appui sur le champ", t());
   await toucher("input.champ");                                    // a person taps the answer field
   await pause(1500);
   await etat("q1-champ-touche");
