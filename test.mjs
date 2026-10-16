@@ -19,6 +19,8 @@ const d = await remote({
     "appium:automationName": "XCUITest", "appium:deviceName": iphone.name, "appium:platformVersion": version,
     "appium:udid": iphone.udid, "appium:connectHardwareKeyboard": false, "appium:nativeWebTap": true,
     "appium:wdaLaunchTimeout": 600000, "appium:simulatorStartupTimeout": 600000, "appium:newCommandTimeout": 600, "appium:safariInitialUrl": "about:blank",
+    // cold simulator booted by Appium: Safari takes a while to show up in the remote debugger
+    "appium:webviewConnectTimeout": 180000, "appium:webkitResponseTimeout": 60000,
   },
 });
 const video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "-f", "out/run.mp4"]);
