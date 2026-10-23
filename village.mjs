@@ -24,6 +24,8 @@ const opts = {
     "appium:udid": iphone.udid, "appium:connectHardwareKeyboard": false, "appium:nativeWebTap": true,
     "appium:wdaLaunchTimeout": 600000, "appium:simulatorStartupTimeout": 600000, "appium:newCommandTimeout": 900, "appium:safariInitialUrl": "about:blank",
     "appium:webviewConnectTimeout": 180000, "appium:webkitResponseTimeout": 60000, "appium:showSafariConsoleLog": true,
+    // the game animates all the time: XCTest must not wait for the app to be idle before each native action
+    "appium:waitForQuiescence": false, "appium:waitForIdleTimeout": 0, "appium:animationCoolOffTimeout": 0,
   },
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -52,6 +54,11 @@ async function trouver(pred, ms = 60000) {
   return null;
 }
 const rect = async (e) => { try { const r = await e.getElementRect(e.elementId); return { y: Math.round(r.y), bas: Math.round(r.y + r.height), x: Math.round(r.x), h: Math.round(r.height) }; } catch { return null; } };
+/** A real touch at the centre of a native element (coordinates: no element action, no wait for the app to be idle). */
+async function taperSur(e) {
+  const r = await e.getElementRect(e.elementId);
+  await d.execute("mobile: tap", { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
+}
 const valeurChamp = async (e) => e.getAttribute("value").catch(() => "?");
 async function taper(champ, texte) {
   try { await champ.addValue(texte); } catch (e) { console.log("addValue refusé", JSON.stringify(texte), e.message.split("\n")[0]); try { await d.keys(texte.split("")); } catch (e2) { console.log("keys refusé", e2.message.split("\n")[0]); } }
@@ -85,7 +92,7 @@ finir = async () => {
       const qCachee = etat === "etat-question" && q && (q[0] < top - 1 || q[1] > top + h + 1);
       const cSous = ouvert && c && c[1] > top + h + 1, vSous = ouvert && v && v[1] > top + h + 1;
       if (qCachee) cachees++; if (cSous || vSous) sous++;
-      const l = `${etat} vvH ${h} vvTop ${top} scrollY ${sy} --clavier ${cl} --vv-haut ${vh} question ${q} champ ${c} valider ${v} val "${val}" focus ${act} audio ${au}`;
+      const l = `${etat} vvH ${h} vvTop ${top} scrollY ${sy} --clavier ${cl} --vv-haut ${vh} question ${q} champ ${c} valider ${v} val "${val}" focus ${act} audio ${String(au).replace(/:[0-9.]+/g, "")}`;
       if (l !== avant || ev !== ".") console.log(`JOURNAL ${String(ms).padStart(6)} ${ev.padEnd(14)} ${l}${qCachee ? "  <-- QUESTION CACHÉE" : ""}${cSous ? "  <-- CHAMP SOUS LE CLAVIER" : ""}${vSous ? "  <-- VALIDER SOUS LE CLAVIER" : ""}`);
       avant = l;
     }
@@ -156,7 +163,7 @@ try {
     if (!champ) { m.erreur = "champ introuvable"; bilan.manches.push(m); throw new Error(`question ${i + 1} : champ introuvable`); }
     m.question = t();
     console.log("question", i + 1, "champ trouvé", t());
-    await champ.click();
+    await taperSur(champ);
     await pause(1800);
     m.clavierIOS = await d.isKeyboardShown().catch(() => "?");
     const clavier = await trouver(`type == "XCUIElementTypeKeyboard"`, 4000);
@@ -184,7 +191,7 @@ try {
     if (i === 0 || i === 3 || i === 6) m.capture = await capture(`q${i + 1}-clavier`);
     if (!valider) { m.erreur = "Submit introuvable"; bilan.manches.push(m); throw new Error(`question ${i + 1} : Submit introuvable`); }
     m.validerActif = await valider.isEnabled().catch(() => "?");
-    await valider.click();
+    await taperSur(valider);
     m.valide = t();
     console.log("question", i + 1, "validée", t());
     const suivant = await trouver(`type == "XCUIElementTypeButton" AND (label BEGINSWITH[c] "next" OR label BEGINSWITH[c] "see my")`, 60000);
@@ -193,7 +200,7 @@ try {
     bilan.manches.push(m);
     if (!suivant) throw new Error(`question ${i + 1} : pas de verdict`);
     if (i === 6) bilan.captures.push(await capture("verdict-7"));
-    await suivant.click();
+    await taperSur(suivant);
   }
   const partager = await trouver(`type == "XCUIElementTypeButton" AND label BEGINSWITH[c] "share"`, 120000);
   bilan.fin = partager ? t() : null;
