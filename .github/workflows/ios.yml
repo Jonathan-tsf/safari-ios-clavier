@@ -4,7 +4,10 @@ on:
     inputs:
       url:
         description: Page to test
-        default: https://wonderhop.io/en/
+        default: https://estimation.d24fxhqaj8oukz.amplifyapp.com/village/?lang=en
+      script:
+        description: Test script (test.mjs = Wonderhop, village.mjs = Villagehop)
+        default: village.mjs
 jobs:
   safari:
     runs-on: macos-26
@@ -40,7 +43,7 @@ jobs:
       - name: Test
         env:
           URL: ${{ inputs.url }}
-        run: node test.mjs
+        run: node ${{ inputs.script }}
       - if: always()
         uses: actions/upload-artifact@v4
         with:
