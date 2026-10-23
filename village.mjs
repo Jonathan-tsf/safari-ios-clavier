@@ -14,9 +14,10 @@ const runtime = Object.keys(devs).filter((k) => k.includes("iOS")).sort().pop();
 const iphone = devs[runtime].find((d) => d.udid === process.env.UDID) || devs[runtime].find((d) => /^iPhone 1[6-7]( |$)/.test(d.name)) || devs[runtime].find((d) => d.name.startsWith("iPhone"));
 const version = runtime.split("iOS-")[1].replace(/-/g, ".");
 console.log("device", iphone.name, version, "url", URL);
+const tDebut = Date.now();
 
 const opts = {
-  hostname: "127.0.0.1", port: 4723, logLevel: "warn", connectionRetryTimeout: 1200000, connectionRetryCount: 0,
+  hostname: "127.0.0.1", port: 4723, logLevel: "warn", connectionRetryTimeout: 900000, connectionRetryCount: 0,
   capabilities: {
     platformName: "iOS", browserName: "Safari",
     "appium:automationName": "XCUITest", "appium:deviceName": iphone.name, "appium:platformVersion": version,
@@ -26,13 +27,14 @@ const opts = {
   },
 };
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+/* watchdog (set before the session: creating it once took 7 min and more): results written, step ends before the job timeout */
+let finir = null, video = null;
+setTimeout(async () => { console.log("WATCHDOG: 26 min, stopping"); setTimeout(() => process.exit(1), 150000).unref(); try { await finir?.(); } catch {} video?.kill("SIGINT"); await pause(3000); process.exit(1); }, 26 * 60 * 1000).unref();
 let d;
+console.log("session…");
 try { d = await remote(opts); } catch (e) { console.log("session: second try after", e.message); await pause(30000); d = await remote(opts); }
 
-/* watchdog: whatever happens, results are written and the step ends before the job timeout */
-let finir = null;
-setTimeout(async () => { console.log("WATCHDOG: 30 min, stopping"); try { await finir?.(); } catch {} video.kill("SIGINT"); await pause(3000); process.exit(1); }, 30 * 60 * 1000).unref();
-const video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "-f", "out/run.mp4"]);
+video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "-f", "out/run.mp4"]);
 const t0 = Date.now(), t = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
 const bilan = { device: `${iphone.name} iOS ${version}`, url: URL, manches: [], erreurs: [] };
 let web = null, n = 0;
