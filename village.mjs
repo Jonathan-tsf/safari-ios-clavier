@@ -97,24 +97,16 @@ try {
   web = (await d.getContexts()).map((c) => String(c.id ?? c)).find((c) => c.startsWith("WEBVIEW"));
   console.log("contexte web", web);
   await enWeb();
-  const pret = async () => {
-    const fin = Date.now() + 180000;
-    for (let i = 0; Date.now() < fin; i++) {
-      const ok = await d.execute(() => document.readyState === "complete" && !!document.querySelector("#jouer") && !document.getElementById("app").classList.contains("ouverture")).catch(() => false);
-      if (ok) return true;
-      console.log("page pas prête", i, t());
-      await pause(1000);
-    }
-    return false;
-  };
+  /* the page is heavy for the CI simulator (each page read takes 15-20 s, a reload once killed Safari): wait natively
+     for the Play button, no reload, one page call to set the flag and the recorder */
   console.log("page chargée", t());
-  await pret();
-  // test device: same flag as Jonathan's own devices, then reload
+  await enNatif();
+  const jouer0 = await trouver(`type == "XCUIElementTypeButton" AND label BEGINSWITH[c] "today"`, 240000);
+  console.log("bouton Today's game vu", !!jouer0, t());
+  await enWeb();
+  // test device: same flag as Jonathan's own devices
   await d.execute(() => localStorage.setItem("village.moi", "1")).catch((e) => console.log("flag moi non posé", e.message));
-  await d.url(URL);
-  await enWeb().catch(() => {});
-  console.log("page prête", await pret(), t());
-  console.log("bundle", await d.execute(() => [...document.scripts].map((s) => s.src).filter(Boolean).join(" ")));
+  console.log("flag posé", t());
   // the recorder: every 100 ms + viewport, focus, touch, input, errors; audio contexts are tracked from here on
   await d.execute(() => {
     window.__j = []; window.__err = []; window.__ctx = [];
@@ -147,6 +139,7 @@ try {
     document.addEventListener("touchstart", () => note("TOUCHER"), { capture: true, passive: true });
     document.getElementById("champ").addEventListener("input", () => note("input"));
   });
+  console.log("enregistreur posé", t());
   await enNatif();
   await fermerAstuces();
   bilan.captures = [await capture("accueil")];
