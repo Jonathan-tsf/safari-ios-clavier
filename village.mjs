@@ -31,12 +31,11 @@ const opts = {
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 /* watchdog (set before the session: creating it once took 7 min and more): results written, step ends before the job timeout */
 let finir = null, video = null;
-setTimeout(async () => { console.log("WATCHDOG: 22 min, stopping"); setTimeout(() => process.exit(1), 150000).unref(); try { await finir?.(); } catch {} video?.kill("SIGINT"); await pause(3000); process.exit(1); }, 22 * 60 * 1000).unref();
+setTimeout(async () => { console.log("WATCHDOG: 55 min, stopping"); setTimeout(() => process.exit(1), 150000).unref(); try { await finir?.(); } catch {} video?.kill("SIGINT"); await pause(3000); process.exit(1); }, 55 * 60 * 1000).unref();
 let d;
 console.log("session…");
 try { d = await remote(opts); } catch (e) { console.log("session: second try after", e.message); await pause(30000); d = await remote(opts); }
 
-video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "-f", "out/run.mp4"]);
 const t0 = Date.now(), t = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
 const bilan = { device: `${iphone.name} iOS ${version}`, url: URL, manches: [], erreurs: [] };
 let web = null, n = 0;
@@ -114,10 +113,9 @@ try {
   console.log("bouton Today's game vu", !!jouer0, t());
   await enWeb();
   // test device: same flag as Jonathan's own devices
-  await d.execute(() => localStorage.setItem("village.moi", "1")).catch((e) => console.log("flag moi non posé", e.message));
-  console.log("flag posé", t());
   // the recorder: every 100 ms + viewport, focus, touch, input, errors; audio contexts are tracked from here on
   await d.execute(() => {
+    localStorage.setItem("village.moi", "1");
     window.__j = []; window.__err = []; window.__ctx = [];
     const t0 = performance.now();
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -152,21 +150,25 @@ try {
   await enNatif();
   await fermerAstuces();
   bilan.captures = [await capture("accueil")];
-  const jouer = await trouver(`type == "XCUIElementTypeButton" AND label BEGINSWITH[c] "today"`, 30000);
+  /* the button found before (native lookups are slow on the CI simulator) */
+  const jouer = jouer0 ?? await trouver(`type == "XCUIElementTypeButton" AND label BEGINSWITH[c] "today"`, 120000);
   if (!jouer) throw new Error("bouton Today's game introuvable");
-  await jouer.click();
+  /* the video from the game itself (a 30 min video took 20 min to upload) */
+  video = spawn("xcrun", ["simctl", "io", iphone.udid, "recordVideo", "--codec", "h264", "-f", "out/run.mp4"]);
+  await pause(1500);
+  await taperSur(jouer);
   console.log("Today's game touché", t());
 
   for (let i = 0; i < 7; i++) {
     const m = { manche: i + 1 };
-    const champ = await trouver(`type == "XCUIElementTypeTextField" AND (label CONTAINS[c] "bunnies" OR placeholderValue CONTAINS[c] "type")`, 90000);
+    const champ = await trouver(`type == "XCUIElementTypeTextField" AND (label CONTAINS[c] "bunnies" OR placeholderValue CONTAINS[c] "type")`, 150000);
     if (!champ) { m.erreur = "champ introuvable"; bilan.manches.push(m); throw new Error(`question ${i + 1} : champ introuvable`); }
     m.question = t();
     console.log("question", i + 1, "champ trouvé", t());
     await taperSur(champ);
     await pause(1800);
     m.clavierIOS = await d.isKeyboardShown().catch(() => "?");
-    const clavier = await trouver(`type == "XCUIElementTypeKeyboard"`, 4000);
+    const clavier = await trouver(`type == "XCUIElementTypeKeyboard"`, 30000);
     m.clavierHaut = clavier ? (await rect(clavier))?.y : null;
     await taper(champ, "abc");
     m.apresLettres = await valeurChamp(champ);
@@ -183,7 +185,7 @@ try {
     const rep = String(20 + i * 7);
     await taper(champ, rep);
     m.apresReponse = await valeurChamp(champ);
-    const valider = await trouver(`type == "XCUIElementTypeButton" AND label ==[c] "Submit"`, 6000);
+    const valider = await trouver(`type == "XCUIElementTypeButton" AND label ==[c] "Submit"`, 60000);
     m.champNatif = await rect(champ);
     m.validerNatif = valider ? await rect(valider) : null;
     m.champAuDessusDuClavier = m.clavierHaut && m.champNatif ? m.champNatif.bas <= m.clavierHaut : null;
@@ -194,7 +196,7 @@ try {
     await taperSur(valider);
     m.valide = t();
     console.log("question", i + 1, "validée", t());
-    const suivant = await trouver(`type == "XCUIElementTypeButton" AND (label BEGINSWITH[c] "next" OR label BEGINSWITH[c] "see my")`, 60000);
+    const suivant = await trouver(`type == "XCUIElementTypeButton" AND (label BEGINSWITH[c] "next" OR label BEGINSWITH[c] "see my")`, 120000);
     m.verdict = suivant ? t() : null;
     console.log("MANCHE", JSON.stringify(m));
     bilan.manches.push(m);
