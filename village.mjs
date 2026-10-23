@@ -29,7 +29,7 @@ const opts = {
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 /* watchdog (set before the session: creating it once took 7 min and more): results written, step ends before the job timeout */
 let finir = null, video = null;
-setTimeout(async () => { console.log("WATCHDOG: 26 min, stopping"); setTimeout(() => process.exit(1), 150000).unref(); try { await finir?.(); } catch {} video?.kill("SIGINT"); await pause(3000); process.exit(1); }, 26 * 60 * 1000).unref();
+setTimeout(async () => { console.log("WATCHDOG: 22 min, stopping"); setTimeout(() => process.exit(1), 150000).unref(); try { await finir?.(); } catch {} video?.kill("SIGINT"); await pause(3000); process.exit(1); }, 22 * 60 * 1000).unref();
 let d;
 console.log("session…");
 try { d = await remote(opts); } catch (e) { console.log("session: second try after", e.message); await pause(30000); d = await remote(opts); }
